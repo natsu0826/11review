@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ja">
+    <head>
+        <meta charset="UTF-8">
+        <title>User list</title>
+        <link rel="stylesheet" href="/styles.css">
+    </head>
+    <body>
+        <div class="container">
+            <h1>商品レビュー</h1>
+            <div class="deta-container">
+                <div id="age-chart-container">
+                    <canvas id="age-chart"></canvas>
+                    <div id="age-chart-legend"></div>
+                </div>
+            </div>
+            <div class="search">
+                <div class="sort-content">
+                    <label for="sort">並び替え</label>
+                    <select id="sort" name="sort">
+                        <option value="default">標準</option>
+                        <option value="high">評価が高い順</option>
+                        <option value="low">評価が低い順</option>
+                    </select>
+                </div>
+                <div class="filter-content">
+                    <label for="filter">絞り込み：</label>
+                    <select id="filter" name="filter">
+                        <option value="all">すべて</option>
+                        <option value="1">評価1</option>
+                        <option value="2">評価2</option>
+                        <option value="3">評価3</option>
+                        <option value="4">評価4</option>
+                        <option value="5">評価5</option>
+                    </select>
+                </div>
+                <div class="create"><a href="/create">レビューを追加</a></div>
+            </div>
+            <div id="user-table"></div>
+        </div>
+        <script>
+            const sortSelect = document.getElementById('sort');
+            const filterSelect = document.getElementById('filter');
+            const userTable = document.getElementById('user-table');
+            const ageChartContainer = document.getElementById('age-chart-container');
+            const ageChartLegend = document.getElementById('age-chart-legend');
+            const ageChartPercentages = document.getElementById('age-chart-percentages');
+            let originalUsers = JSON.parse('<%= JSON.stringify(users) %>'.replace(/&#34;/g, '"'));
+
+            // データの初期表示
+            updateUserTable(originalUsers);
+            showAgeStatistics(originalUsers);
+
+            // ソートと絞り込みのイベントリスナー
+            sortSelect.addEventListener('change', applySortAndFilter);
+            filterSelect.addEventListener('change', applySortAndFilter);
+
+            // ソートと絞り込みの処理
+            function applySortAndFilter() {
+                const sortBy = sortSelect.value;
+                const filterBy = filterSelect.value;
+
+                let filteredUsers = originalUsers.slice();
+
+                // 絞り込み処理
+                if (filterBy !== 'all') {
+                    filteredUsers = filteredUsers.filter(user => user.rating.toString() === filterBy);
+                }
+
+                // ソート処理
+                if (sortBy === 'high') {
+                    filteredUsers.sort((a, b) => b.rating - a.rating);
+                } else if (sortBy === 'low') {
+                    filteredUsers.sort((a, b) => a.rating - b.rating);
+                }
+
+                // テーブルの内容を更新
+                updateUserTable(filteredUsers);
+
+                // 年代統計の表示
+                showAgeStatistics(filteredUsers);
+            }
+
+            // テーブルを更新する関数
+            function updateUserTable(users) {
+                userTable.innerHTML = '';
+
+                users.forEach(value => {
+                    const ol = document.createElement('ol');
+                    ol.classList.add('user-list');
+
+                    const ratingCell = document.createElement('li');
+                    ratingCell.classList.add('rating-cell');
+
+                    const maxRating = Math.min(value.rating, 5); // 星の最大数を5に制限
+
+                    for (let i = 0; i < 5; i++) {
+                        const star = document.createElement('span');
+                        star.innerHTML = '&#9733;'; // 星のUnicode文字
+                        star.classList.add('star');
+
+                        if (i >= maxRating) {
+                            star.innerHTML = '&#9734;';
+                            star.classList.add('gray');
+                        }
+                        ratingCell.appendChild(star);
+                    }
+                    const star2 = document.createElement('span');
+                    star2.textContent =`${value.rating}`
+                    star2.classList.add('star2');
+                    ratingCell.insertAdjacentElement('beforeend', star2);
+
+                    ol.appendChild(ratingCell);
+                    const upCell = document.createElement('li');
+                    upCell.classList.add('up-cell');
+                    ol.appendChild(upCell);
+
+                    const editLink = document.createElement('a');
+                    editLink.href = `/edit/${value.id}`;
+                    editLink.innerText = '更新';
+                    upCell.appendChild(editLink);
+
+                    const userInfoCell = document.createElement('li');
+                    userInfoCell.classList.add('user-info-cell');
+                    userInfoCell.textContent = `${value.username}さん（${value.age}歳）`;
+                    ol.appendChild(userInfoCell);
+
+                    const reasonCell = document.createElement('li');
+                    reasonCell.classList.add('reason-cell');
+                    reasonCell.textContent = value.reason;
+                    ol.appendChild(reasonCell);
+
+
+
+                    userTable.appendChild(ol);
+                });
+            }
+
+            // 年代統計を表示する関数
+            function showAgeStatistics(users) {
+                const ageMap = new Map();//新しい配列を作る
+
+                users.forEach(user => {
+                    const ageGroup = Math.floor(user.age / 10) * 10; // 年代ごとにグループ化
+                    if (ageMap.has(ageGroup)) {//ageMapが年代グループをすでに持っている場合、対応するカウントをインクリメントします。
+                        ageMap.set(ageGroup, ageMap.get(ageGroup) + 1);
+                    } else {//そうでなければ、カウントを1で初期化します。
+                        ageMap.set(ageGroup, 1);
+                    }
+                });
+
+                const ageLabels = [];
+                const ageData = [];
+                const ageColors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF']; // 年代ごとの色のリスト
+                //ageMapを反復処理し、ラベルとデータの配列に値を追加します。
+
+                ageMap.forEach((count, ageGroup) => {
+                    ageLabels.push(`${ageGroup}代`);
+                    ageData.push(count);
+                });
+                //グラフの描画に使用するキャンバス要素とコンテキストを取得します。
+                const canvas = document.getElementById('age-chart');
+                const context = canvas.getContext('2d');
+                //グラフの中心座標と半径を計算します。
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+                const radius = Math.min(centerX, centerY);
+
+                let startAngle = 0;
+                let endAngle = 0;
+                //各年代のデータに対して、パーセンテージとスライスの角度を計算します。
+                ageData.forEach((data, index) => {
+                    const percent = data / users.length;
+                    const sliceAngle = 2 * Math.PI * percent;
+
+                    endAngle = startAngle + sliceAngle;
+
+                    context.beginPath();
+                    context.moveTo(centerX, centerY);
+                    context.arc(centerX, centerY, radius, startAngle, endAngle);
+                    context.fillStyle = ageColors[index % ageColors.length];
+                    context.fill();
+                    context.closePath();
+                    //各年代のデータに対して、パーセンテージとスライスの角度を計算します。
+                    const midAngle = startAngle + sliceAngle / 2;
+                    const labelRadius = radius * 0.7;
+                    const labelX = centerX + labelRadius * Math.cos(midAngle);
+                    const labelY = centerY + labelRadius * Math.sin(midAngle);
+                    //スライスの描画を開始します。円の中心から弧を描き、年代ごとの色を設定します。
+                    context.textAlign = "center";
+                    context.fillStyle = "#000000";
+                    context.fillText(`${(percent * 100).toFixed(1)}%`, labelX, labelY);
+
+                    startAngle = endAngle;
+                });
+
+
+
+
+
+                // 凡例表示
+                ageChartLegend.innerHTML = '';
+
+                ageLabels.forEach((label, index) => {
+                    const legendItem = document.createElement('div');
+                    legendItem.classList.add('legend-item');
+
+                    const legendColor = document.createElement('div');
+                    legendColor.classList.add('legend-color');
+                    legendColor.style.backgroundColor = ageColors[index % ageColors.length];
+                    legendItem.appendChild(legendColor);
+
+                    const legendLabel = document.createElement('div');
+                    legendLabel.classList.add('legend-label');
+                    legendLabel.textContent = label;
+                    legendItem.appendChild(legendLabel);
+
+                    ageChartLegend.appendChild(legendItem);
+                });
+            }
+        </script>
+    </body>
+</html>
